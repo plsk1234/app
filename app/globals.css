@@ -1,0 +1,22 @@
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d2e;
+  --surface2: #242740;
+  --accent: #4fffb0;
+  --accent2: #7c6af7;
+  --text: #e8eaf0;
+  --text-muted: #7a7f9a;
+  --border: #2e3250;
+  --danger: #ff6b6b;
+  --warn: #ffd166;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
