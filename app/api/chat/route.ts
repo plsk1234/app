@@ -3,7 +3,7 @@ import { getRedis } from "@/lib/redis";
 import type { Subsidy } from "../subsidies/route";
 
 const KEY = "subsidies";
-const GEMINI_MODEL = "gemini-2.5-flash-preview-05-20";
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 export async function POST(req: Request) {
   const apiKey = req.headers.get("x-gemini-key") || "";
