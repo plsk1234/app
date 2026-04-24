@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
 
-// ===== 型定義 =====
 interface Subsidy {
   id: string;
   name: string;
@@ -18,14 +17,10 @@ interface ChatMessage {
   text: string;
 }
 
+// ① 10都県に絞る
 const PREFS = [
-  "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
-  "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
-  "新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県",
-  "静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県",
-  "奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県",
-  "徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県",
-  "熊本県","大分県","宮崎県","鹿児島県","沖縄県",
+  "東京都","神奈川県","千葉県","埼玉県","茨城県",
+  "栃木県","群馬県","山梨県","長野県","新潟県",
 ];
 
 const SUGGESTIONS = [
@@ -34,6 +29,12 @@ const SUGGESTIONS = [
   "設備投資の補助金を探したい",
   "雇用を増やす予定がある",
 ];
+
+// ② 管理者パスワード（変更したい場合はここを書き換える）
+const ADMIN_PASSWORD = "admin1234";
+
+// ④ APIに送る履歴の最大件数（表示はすべて残る）
+const MAX_API_HISTORY = 10;
 
 export default function Home() {
   const [tab, setTab] = useState<"chat" | "manage" | "settings">("chat");
@@ -61,9 +62,12 @@ export default function Home() {
   const [filterPref, setFilterPref] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // 設定
+  // ② 設定タブの管理者認証
   const [geminiKey, setGeminiKey] = useState("");
   const [keySaved, setKeySaved] = useState(false);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [adminPwInput, setAdminPwInput] = useState("");
+  const [adminPwError, setAdminPwError] = useState("");
 
   // ===== 初期化 =====
   useEffect(() => {
@@ -73,6 +77,8 @@ export default function Home() {
 
   useEffect(() => {
     if (tab === "manage") fetchSubsidies();
+    // 設定タブを離れたらロック
+    if (tab !== "settings") setAdminUnlocked(false);
   }, [tab]);
 
   useEffect(() => {
@@ -188,6 +194,9 @@ export default function Home() {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setSending(true);
 
+    // ④ APIには直近MAX_API_HISTORY件のみ送る（画面には全件残る）
+    const apiMessages = newMessages.slice(-MAX_API_HISTORY);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -196,7 +205,7 @@ export default function Home() {
           "x-gemini-key": key,
         },
         body: JSON.stringify({
-          messages: newMessages,
+          messages: apiMessages,
           pref: chatPref,
           industry: chatIndustry,
         }),
@@ -421,30 +430,81 @@ export default function Home() {
         </div>
       )}
 
-      {/* 設定パネル */}
+      {/* ② 設定パネル：管理者パスワードで保護 */}
       {tab === "settings" && (
         <div className={`${styles.panel} ${styles.panelScroll}`}>
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Gemini API設定</h3>
-            <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
-              APIキーはブラウザのlocalStorageに保存され、リクエスト時にサーバーへ送信されます。<br />
-              取得先：<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "#7ab4ff" }}>Google AI Studio</a>
-            </p>
-            <label className={styles.label}>Google AI APIキー</label>
-            <input
-              type="password"
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-              placeholder="AIzaSy..."
-              className={styles.formInput}
-            />
-            <button
-              className={styles.btnPrimary}
-              onClick={() => { localStorage.setItem("geminiKey", geminiKey); setKeySaved(true); setTimeout(() => setKeySaved(false), 2000); }}
-            >
-              {keySaved ? "✅ 保存しました" : "保存する"}
-            </button>
-          </div>
+          {!adminUnlocked ? (
+            <div className={styles.card}>
+              <h3 className={styles.cardTitle}>管理者認証</h3>
+              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
+                設定画面は管理者専用です。パスワードを入力してください。
+              </p>
+              <label className={styles.label}>管理者パスワード</label>
+              <input
+                type="password"
+                value={adminPwInput}
+                onChange={(e) => setAdminPwInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (adminPwInput === ADMIN_PASSWORD) {
+                      setAdminUnlocked(true);
+                      setAdminPwError("");
+                    } else {
+                      setAdminPwError("パスワードが違います");
+                    }
+                  }
+                }}
+                placeholder="パスワードを入力"
+                className={styles.formInput}
+              />
+              {adminPwError && <p style={{ color: "var(--danger)", fontSize: "0.82rem", marginBottom: 10 }}>{adminPwError}</p>}
+              <button
+                className={styles.btnPrimary}
+                onClick={() => {
+                  if (adminPwInput === ADMIN_PASSWORD) {
+                    setAdminUnlocked(true);
+                    setAdminPwError("");
+                  } else {
+                    setAdminPwError("パスワードが違います");
+                  }
+                }}
+              >
+                認証する
+              </button>
+            </div>
+          ) : (
+            <div className={styles.card}>
+              <h3 className={styles.cardTitle}>Gemini API設定</h3>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
+                APIキーはブラウザのlocalStorageに保存されます。<br />
+                取得先：<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "#7ab4ff" }}>Google AI Studio</a>
+              </p>
+              <label className={styles.label}>Google AI APIキー</label>
+              <input
+                type="password"
+                value={geminiKey}
+                onChange={(e) => setGeminiKey(e.target.value)}
+                placeholder="AIzaSy..."
+                className={styles.formInput}
+              />
+              <button
+                className={styles.btnPrimary}
+                onClick={() => {
+                  localStorage.setItem("geminiKey", geminiKey);
+                  setKeySaved(true);
+                  setTimeout(() => setKeySaved(false), 2000);
+                }}
+              >
+                {keySaved ? "✅ 保存しました" : "保存する"}
+              </button>
+              <button
+                style={{ marginTop: 12, background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontFamily: "inherit", fontSize: "0.82rem", width: "100%" }}
+                onClick={() => { setAdminUnlocked(false); setAdminPwInput(""); }}
+              >
+                🔒 ロックする
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
