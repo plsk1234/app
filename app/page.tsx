@@ -17,6 +17,15 @@ interface ChatMessage {
   text: string;
 }
 
+interface ChatSession {
+  id: string;
+  title: string;
+  pref: string;
+  industry: string;
+  messages: ChatMessage[];
+  createdAt: number;
+}
+
 const PREFS = [
   "東京都","神奈川県","千葉県","埼玉県","茨城県",
   "栃木県","群馬県","山梨県","長野県","新潟県",
@@ -30,12 +39,16 @@ const SUGGESTIONS = [
 ];
 
 const MAX_API_HISTORY = 10;
+const MAX_SESSIONS = 30; // 保存する最大セッション数
+const SESSIONS_KEY = "chatSessions";
 
 type Screen = "login" | "app";
+type ChatView = "chat" | "history";
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("login");
   const [tab, setTab] = useState<"chat" | "manage" | "settings">("chat");
+  const [chatView, setChatView] = useState<ChatView>("chat");
 
   // ログイン
   const [loginPw, setLoginPw] = useState("");
@@ -46,10 +59,15 @@ export default function Home() {
   const [chatPref, setChatPref] = useState("");
   const [chatIndustry, setChatIndustry] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 履歴
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
 
   // 補助金管理
   const [subsidies, setSubsidies] = useState<Subsidy[]>([]);
@@ -71,10 +89,11 @@ export default function Home() {
   const [adminPwError, setAdminPwError] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
 
-  // ===== 初期化：sessionStorageでログイン状態を保持 =====
+  // ===== 初期化 =====
   useEffect(() => {
     if (sessionStorage.getItem("loggedIn") === "true") {
       setScreen("app");
+      loadSessions();
     }
   }, []);
 
@@ -90,6 +109,90 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  // ===== セッション管理 =====
+  function loadSessions() {
+    try {
+      const raw = localStorage.getItem(SESSIONS_KEY);
+      const data: ChatSession[] = raw ? JSON.parse(raw) : [];
+      setSessions(data.sort((a, b) => b.createdAt - a.createdAt));
+    } catch {
+      setSessions([]);
+    }
+  }
+
+  function saveSession(msgs: ChatMessage[], sessionId: string | null, pref: string, industry: string) {
+    if (msgs.length === 0) return;
+    try {
+      const raw = localStorage.getItem(SESSIONS_KEY);
+      const data: ChatSession[] = raw ? JSON.parse(raw) : [];
+
+      const title = msgs[0].text.slice(0, 30) + (msgs[0].text.length > 30 ? "..." : "");
+
+      if (sessionId) {
+        const idx = data.findIndex(s => s.id === sessionId);
+        if (idx !== -1) {
+          data[idx] = { ...data[idx], messages: msgs };
+          localStorage.setItem(SESSIONS_KEY, JSON.stringify(data));
+          setSessions(data.sort((a, b) => b.createdAt - a.createdAt));
+          return;
+        }
+      }
+
+      const newSession: ChatSession = {
+        id: Date.now().toString(),
+        title,
+        pref,
+        industry,
+        messages: msgs,
+        createdAt: Date.now(),
+      };
+
+      const updated = [newSession, ...data].slice(0, MAX_SESSIONS);
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(updated));
+      setSessions(updated);
+      setCurrentSessionId(newSession.id);
+    } catch {
+      // localStorage満杯の場合は古いものを削除
+      try {
+        localStorage.removeItem(SESSIONS_KEY);
+      } catch {}
+    }
+  }
+
+  function deleteSession(id: string) {
+    const updated = sessions.filter(s => s.id !== id);
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(updated));
+    setSessions(updated);
+  }
+
+  function loadSession(session: ChatSession) {
+    setMessages(session.messages);
+    setChatPref(session.pref);
+    setChatIndustry(session.industry);
+    setCurrentSessionId(session.id);
+    setChatView("chat");
+  }
+
+  function copySession(session: ChatSession) {
+    const text = session.messages
+      .map(m => `${m.role === "user" ? "【質問】" : "【回答】"}\n${m.text}`)
+      .join("\n\n---\n\n");
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(session.id);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  }
+
+  function copyCurrentChat() {
+    const text = messages
+      .map(m => `${m.role === "user" ? "【質問】" : "【回答】"}\n${m.text}`)
+      .join("\n\n---\n\n");
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied("current");
+      setTimeout(() => setCopied(null), 2000);
+    });
+  }
 
   // ===== ログイン =====
   async function doLogin() {
@@ -107,6 +210,7 @@ export default function Home() {
         sessionStorage.setItem("loggedIn", "true");
         setScreen("app");
         setLoginPw("");
+        loadSessions();
       } else {
         setLoginError(data.error || "パスワードが違います");
       }
@@ -259,7 +363,9 @@ export default function Home() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setMessages([...newMessages, { role: "model", text: data.answer }]);
+      const finalMessages = [...newMessages, { role: "model" as const, text: data.answer }];
+      setMessages(finalMessages);
+      saveSession(finalMessages, currentSessionId, chatPref, chatIndustry);
     } catch (e) {
       setMessages([...newMessages, { role: "model", text: "❌ エラー: " + e }]);
     } finally {
@@ -267,9 +373,19 @@ export default function Home() {
     }
   }
 
+  function newChat() {
+    setMessages([]);
+    setCurrentSessionId(null);
+  }
+
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }
+
+  function formatDate(ts: number) {
+    const d = new Date(ts);
+    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
 
   const filteredSubsidies = filterPref
@@ -292,11 +408,7 @@ export default function Home() {
             className={styles.loginInput}
           />
           {loginError && <p className={styles.loginError}>{loginError}</p>}
-          <button
-            className={styles.btnPrimary}
-            onClick={doLogin}
-            disabled={loginLoading}
-          >
+          <button className={styles.btnPrimary} onClick={doLogin} disabled={loginLoading}>
             {loginLoading ? "確認中..." : "ログイン"}
           </button>
         </div>
@@ -344,54 +456,117 @@ export default function Home() {
               placeholder="例：製造業"
               className={styles.industryInput}
             />
-            <button className={styles.btnNewChat} onClick={() => setMessages([])}>🔄 新しい相談</button>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+              <button
+                className={styles.btnNewChat}
+                onClick={() => { setChatView(chatView === "chat" ? "history" : "chat"); }}
+              >
+                {chatView === "chat" ? "📋 履歴" : "💬 チャット"}
+              </button>
+              {chatView === "chat" && (
+                <>
+                  {messages.length > 0 && (
+                    <button className={styles.btnNewChat} onClick={copyCurrentChat}>
+                      {copied === "current" ? "✅ コピー済み" : "📋 コピー"}
+                    </button>
+                  )}
+                  <button className={styles.btnNewChat} onClick={newChat}>🔄 新しい相談</button>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className={styles.chatMessages}>
-            {messages.length === 0 && !sending ? (
-              <div className={styles.chatEmpty}>
-                <div className={styles.emptyIcon}>✦</div>
-                <h3>補助金についてご相談ください</h3>
-                <p>都道府県を選択して、案件の内容を入力してください。<br />追加の質問も続けてできます。</p>
-                <div className={styles.chips}>
-                  {SUGGESTIONS.map((s) => (
-                    <button key={s} className={styles.chip} onClick={() => sendMessage(s)}>{s}</button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <>
-                {messages.map((m, i) => (
-                  <div key={i} className={`${styles.msg} ${m.role === "user" ? styles.msgUser : styles.msgAi}`}>
-                    <div className={styles.avatar}>{m.role === "user" ? "👤" : "✦"}</div>
-                    <div className={styles.bubble}>{m.text}</div>
-                  </div>
-                ))}
-                {sending && (
-                  <div className={`${styles.msg} ${styles.msgAi}`}>
-                    <div className={styles.avatar}>✦</div>
-                    <div className={styles.bubble}>
-                      <span className={styles.dot} /><span className={styles.dot} /><span className={styles.dot} />
+          {/* チャット表示 */}
+          {chatView === "chat" ? (
+            <>
+              <div className={styles.chatMessages}>
+                {messages.length === 0 && !sending ? (
+                  <div className={styles.chatEmpty}>
+                    <div className={styles.emptyIcon}>✦</div>
+                    <h3>補助金についてご相談ください</h3>
+                    <p>都道府県を選択して、案件の内容を入力してください。<br />追加の質問も続けてできます。</p>
+                    <div className={styles.chips}>
+                      {SUGGESTIONS.map((s) => (
+                        <button key={s} className={styles.chip} onClick={() => sendMessage(s)}>{s}</button>
+                      ))}
                     </div>
+                    {sessions.length > 0 && (
+                      <button
+                        className={styles.chip}
+                        style={{ marginTop: 8, borderColor: "var(--accent2)", color: "var(--accent2)" }}
+                        onClick={() => setChatView("history")}
+                      >
+                        📋 過去の相談を見る（{sessions.length}件）
+                      </button>
+                    )}
                   </div>
+                ) : (
+                  <>
+                    {messages.map((m, i) => (
+                      <div key={i} className={`${styles.msg} ${m.role === "user" ? styles.msgUser : styles.msgAi}`}>
+                        <div className={styles.avatar}>{m.role === "user" ? "👤" : "✦"}</div>
+                        <div className={styles.bubble}>{m.text}</div>
+                      </div>
+                    ))}
+                    {sending && (
+                      <div className={`${styles.msg} ${styles.msgAi}`}>
+                        <div className={styles.avatar}>✦</div>
+                        <div className={styles.bubble}>
+                          <span className={styles.dot} /><span className={styles.dot} /><span className={styles.dot} />
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </>
                 )}
-                <div ref={messagesEndRef} />
-              </>
-            )}
-          </div>
-
-          <div className={styles.chatInputArea}>
-            <textarea
-              ref={textareaRef}
-              value={inputText}
-              onChange={(e) => { setInputText(e.target.value); autoResize(e.target); }}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-              placeholder="案件内容や質問を入力..."
-              rows={1}
-              className={styles.chatInput}
-            />
-            <button className={styles.btnSend} onClick={() => sendMessage()} disabled={sending}>➤</button>
-          </div>
+              </div>
+              <div className={styles.chatInputArea}>
+                <textarea
+                  ref={textareaRef}
+                  value={inputText}
+                  onChange={(e) => { setInputText(e.target.value); autoResize(e.target); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                  placeholder="案件内容や質問を入力..."
+                  rows={1}
+                  className={styles.chatInput}
+                />
+                <button className={styles.btnSend} onClick={() => sendMessage()} disabled={sending}>➤</button>
+              </div>
+            </>
+          ) : (
+            /* 履歴表示 */
+            <div className={styles.historyPanel}>
+              {sessions.length === 0 ? (
+                <div className={styles.chatEmpty}>
+                  <div className={styles.emptyIcon}>📋</div>
+                  <h3>過去の相談はありません</h3>
+                  <p>チャットで相談すると自動的に保存されます。</p>
+                </div>
+              ) : (
+                sessions.map((s) => (
+                  <div key={s.id} className={styles.sessionItem}>
+                    <div className={styles.sessionHeader}>
+                      <div className={styles.sessionMeta}>
+                        <span className={styles.sessionDate}>{formatDate(s.createdAt)}</span>
+                        <span className={styles.sessionPref}>{s.pref}{s.industry ? ` / ${s.industry}` : ""}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className={styles.btnSessionAction} onClick={() => copySession(s)}>
+                          {copied === s.id ? "✅" : "📋"}
+                        </button>
+                        <button className={styles.btnSessionDanger} onClick={() => deleteSession(s.id)}>🗑️</button>
+                      </div>
+                    </div>
+                    <p className={styles.sessionTitle}>{s.title}</p>
+                    <p className={styles.sessionCount}>{s.messages.length}件のメッセージ</p>
+                    <button className={styles.btnSessionLoad} onClick={() => loadSession(s)}>
+                      この会話を再開する →
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -480,7 +655,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 設定パネル（管理者専用） */}
+      {/* 設定パネル */}
       {tab === "settings" && (
         <div className={`${styles.panel} ${styles.panelScroll}`}>
           {!adminUnlocked ? (
