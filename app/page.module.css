@@ -528,3 +528,78 @@
   font-family: 'Noto Sans JP', sans-serif;
   white-space: nowrap;
 }
+
+/* ===== ログイン画面 ===== */
+.loginScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg);
+  padding: 24px 16px;
+}
+
+.loginCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 36px 28px;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+.loginLogo {
+  font-family: 'Space Mono', monospace;
+  font-size: 1.3rem;
+  color: var(--accent);
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+
+.loginSubtitle {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-bottom: 28px;
+  line-height: 1.7;
+}
+
+.loginInput {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Noto Sans JP', sans-serif;
+  font-size: 1rem;
+  padding: 12px 16px;
+  outline: none;
+  margin-bottom: 14px;
+  text-align: center;
+  letter-spacing: 4px;
+  transition: border-color 0.2s;
+  display: block;
+}
+
+.loginInput:focus { border-color: var(--accent2); }
+
+.loginError {
+  color: var(--danger);
+  font-size: 0.82rem;
+  margin-bottom: 10px;
+}
+
+.btnLogout {
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-family: 'Noto Sans JP', sans-serif;
+  transition: all 0.2s;
+}
+
+.btnLogout:hover { border-color: var(--danger); color: var(--danger); }
