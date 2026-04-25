@@ -603,3 +603,105 @@
 }
 
 .btnLogout:hover { border-color: var(--danger); color: var(--danger); }
+
+/* ===== 履歴パネル ===== */
+.historyPanel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sessionItem {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  transition: border-color 0.2s;
+}
+
+.sessionItem:hover { border-color: var(--accent2); }
+
+.sessionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.sessionMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessionDate {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: 'Space Mono', monospace;
+}
+
+.sessionPref {
+  font-size: 0.72rem;
+  background: rgba(124,106,247,0.12);
+  color: var(--accent2);
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 700;
+}
+
+.sessionTitle {
+  font-size: 0.88rem;
+  color: var(--text);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.sessionCount {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.btnSessionAction {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSessionAction:hover { border-color: var(--accent2); color: var(--accent2); }
+
+.btnSessionDanger {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSessionDanger:hover { border-color: var(--danger); color: var(--danger); }
+
+.btnSessionLoad {
+  background: transparent;
+  border: 1px solid var(--accent2);
+  color: var(--accent2);
+  font-size: 0.8rem;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: 'Noto Sans JP', sans-serif;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.btnSessionLoad:hover { background: rgba(124,106,247,0.1); }
