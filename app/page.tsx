@@ -17,7 +17,6 @@ interface ChatMessage {
   text: string;
 }
 
-// ① 10都県に絞る
 const PREFS = [
   "東京都","神奈川県","千葉県","埼玉県","茨城県",
   "栃木県","群馬県","山梨県","長野県","新潟県",
@@ -30,14 +29,18 @@ const SUGGESTIONS = [
   "雇用を増やす予定がある",
 ];
 
-// ② 管理者パスワード（変更したい場合はここを書き換える）
-const ADMIN_PASSWORD = "admin1234";
-
-// ④ APIに送る履歴の最大件数（表示はすべて残る）
 const MAX_API_HISTORY = 10;
 
+type Screen = "login" | "app";
+
 export default function Home() {
+  const [screen, setScreen] = useState<Screen>("login");
   const [tab, setTab] = useState<"chat" | "manage" | "settings">("chat");
+
+  // ログイン
+  const [loginPw, setLoginPw] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
   // チャット
   const [chatPref, setChatPref] = useState("");
@@ -53,7 +56,7 @@ export default function Home() {
   const [loadingSubsidies, setLoadingSubsidies] = useState(false);
   const [sourceTab, setSourceTab] = useState<"text" | "pdf" | "url">("text");
   const [subsidyName, setSubsidyName] = useState("");
-  const [subsidyPref, setSubsidyPref] = useState("全国");
+  const [subsidyPref, setSubsidyPref] = useState("国");
   const [subsidyDetail, setSubsidyDetail] = useState("");
   const [subsidyUrl, setSubsidyUrl] = useState("");
   const [pdfText, setPdfText] = useState("");
@@ -62,28 +65,90 @@ export default function Home() {
   const [filterPref, setFilterPref] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // ② 設定タブの管理者認証
-  const [geminiKey, setGeminiKey] = useState("");
-  const [keySaved, setKeySaved] = useState(false);
+  // 管理者認証
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [adminPwInput, setAdminPwInput] = useState("");
   const [adminPwError, setAdminPwError] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
 
-  // ===== 初期化 =====
+  // ===== 初期化：sessionStorageでログイン状態を保持 =====
   useEffect(() => {
-    const saved = localStorage.getItem("geminiKey") || "";
-    setGeminiKey(saved);
+    if (sessionStorage.getItem("loggedIn") === "true") {
+      setScreen("app");
+    }
   }, []);
 
   useEffect(() => {
     if (tab === "manage") fetchSubsidies();
-    // 設定タブを離れたらロック
-    if (tab !== "settings") setAdminUnlocked(false);
+    if (tab !== "settings") {
+      setAdminUnlocked(false);
+      setAdminPwInput("");
+      setAdminPwError("");
+    }
   }, [tab]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
+
+  // ===== ログイン =====
+  async function doLogin() {
+    if (!loginPw.trim()) return;
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: loginPw, type: "app" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        sessionStorage.setItem("loggedIn", "true");
+        setScreen("app");
+        setLoginPw("");
+      } else {
+        setLoginError(data.error || "パスワードが違います");
+      }
+    } catch {
+      setLoginError("通信エラーが発生しました");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  function doLogout() {
+    sessionStorage.removeItem("loggedIn");
+    setScreen("login");
+    setMessages([]);
+    setLoginPw("");
+    setLoginError("");
+  }
+
+  // ===== 管理者認証 =====
+  async function doAdminAuth() {
+    if (!adminPwInput.trim()) return;
+    setAdminLoading(true);
+    setAdminPwError("");
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPwInput, type: "admin" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminUnlocked(true);
+        setAdminPwInput("");
+      } else {
+        setAdminPwError(data.error || "パスワードが違います");
+      }
+    } catch {
+      setAdminPwError("通信エラーが発生しました");
+    } finally {
+      setAdminLoading(false);
+    }
+  }
 
   // ===== 補助金API =====
   async function fetchSubsidies() {
@@ -129,13 +194,7 @@ export default function Home() {
       const res = await fetch("/api/subsidies", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: subsidyName,
-          pref: subsidyPref,
-          detail,
-          sourceType,
-          url: sourceType === "url" ? subsidyUrl : "",
-        }),
+        body: JSON.stringify({ name: subsidyName, pref: subsidyPref, detail, sourceType, url: sourceType === "url" ? subsidyUrl : "" }),
       });
       if (!res.ok) throw new Error(await res.text());
       setSubsidyName(""); setSubsidyDetail(""); setSubsidyUrl("");
@@ -163,8 +222,7 @@ export default function Home() {
       const pdfjsLib = window.pdfjsLib;
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
       let text = "";
       for (let i = 1; i <= pdf.numPages; i++) {
         setPdfStatus(`📄 ${i} / ${pdf.numPages} ページ処理中...`);
@@ -185,30 +243,19 @@ export default function Home() {
     if (!text) return;
     if (!chatPref) { alert("都道府県を選択してください"); return; }
 
-    const key = localStorage.getItem("geminiKey") || "";
-    if (!key) { alert("設定タブでGemini APIキーを入力してください"); setTab("settings"); return; }
-
     const newMessages: ChatMessage[] = [...messages, { role: "user", text }];
     setMessages(newMessages);
     setInputText("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
     setSending(true);
 
-    // ④ APIには直近MAX_API_HISTORY件のみ送る（画面には全件残る）
     const apiMessages = newMessages.slice(-MAX_API_HISTORY);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-gemini-key": key,
-        },
-        body: JSON.stringify({
-          messages: apiMessages,
-          pref: chatPref,
-          industry: chatIndustry,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: apiMessages, pref: chatPref, industry: chatIndustry }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -220,29 +267,54 @@ export default function Home() {
     }
   }
 
-  function newChat() {
-    setMessages([]);
-  }
-
   function autoResize(el: HTMLTextAreaElement) {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   }
 
-  // ===== フィルタリング =====
   const filteredSubsidies = filterPref
-    ? subsidies.filter((s) => s.pref === filterPref || s.pref === "全国")
+    ? subsidies.filter((s) => s.pref === filterPref)
     : subsidies;
 
+  // ===== ログイン画面 =====
+  if (screen === "login") {
+    return (
+      <div className={styles.loginScreen}>
+        <div className={styles.loginCard}>
+          <h1 className={styles.loginLogo}>// 補助金マッチャー</h1>
+          <p className={styles.loginSubtitle}>社内専用ツール<br />パスワードを入力してください</p>
+          <input
+            type="password"
+            value={loginPw}
+            onChange={(e) => setLoginPw(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") doLogin(); }}
+            placeholder="パスワード"
+            className={styles.loginInput}
+          />
+          {loginError && <p className={styles.loginError}>{loginError}</p>}
+          <button
+            className={styles.btnPrimary}
+            onClick={doLogin}
+            disabled={loginLoading}
+          >
+            {loginLoading ? "確認中..." : "ログイン"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== メイン画面 =====
   return (
     <div className={styles.app}>
-      {/* ヘッダー */}
       <header className={styles.header}>
         <h1 className={styles.logo}>// 補助金マッチャー</h1>
-        <span className={styles.geminiBadge}>✦ Gemini 2.5 Flash</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span className={styles.geminiBadge}>✦ Gemini 2.5 Flash</span>
+          <button className={styles.btnLogout} onClick={doLogout}>ログアウト</button>
+        </div>
       </header>
 
-      {/* タブ */}
       <nav className={styles.tabs}>
         {(["chat", "manage", "settings"] as const).map((t) => (
           <button
@@ -250,7 +322,7 @@ export default function Home() {
             className={`${styles.tab} ${tab === t ? styles.tabActive : ""}`}
             onClick={() => setTab(t)}
           >
-            {t === "chat" ? "💬 チャット" : t === "manage" ? "📋 補助金管理" : "⚙️ 設定"}
+            {t === "chat" ? "💬 チャット" : t === "manage" ? "📋 補助金管理" : "⚙️ 設定（管理者）"}
           </button>
         ))}
       </nav>
@@ -272,7 +344,7 @@ export default function Home() {
               placeholder="例：製造業"
               className={styles.industryInput}
             />
-            <button className={styles.btnNewChat} onClick={newChat}>🔄 新しい相談</button>
+            <button className={styles.btnNewChat} onClick={() => setMessages([])}>🔄 新しい相談</button>
           </div>
 
           <div className={styles.chatMessages}>
@@ -318,11 +390,7 @@ export default function Home() {
               rows={1}
               className={styles.chatInput}
             />
-            <button
-              className={styles.btnSend}
-              onClick={() => sendMessage()}
-              disabled={sending}
-            >➤</button>
+            <button className={styles.btnSend} onClick={() => sendMessage()} disabled={sending}>➤</button>
           </div>
         </div>
       )}
@@ -332,44 +400,30 @@ export default function Home() {
         <div className={`${styles.panel} ${styles.panelScroll}`}>
           <div className={styles.card}>
             <h3 className={styles.cardTitle}>補助金ソースを追加</h3>
-
             <div className={styles.sourceTypeTabs}>
               {(["text", "pdf", "url"] as const).map((t) => (
-                <button
-                  key={t}
-                  className={`${styles.sourceTab} ${sourceTab === t ? styles.sourceTabActive : ""}`}
-                  onClick={() => setSourceTab(t)}
-                >
+                <button key={t} className={`${styles.sourceTab} ${sourceTab === t ? styles.sourceTabActive : ""}`} onClick={() => setSourceTab(t)}>
                   {t === "text" ? "📝 テキスト" : t === "pdf" ? "📄 PDF" : "🔗 URL"}
                 </button>
               ))}
             </div>
-
             <label className={styles.label}>補助金名</label>
             <input type="text" value={subsidyName} onChange={(e) => setSubsidyName(e.target.value)} placeholder="例：ものづくり補助金" className={styles.formInput} />
-
             <label className={styles.label}>対象地域</label>
             <select value={subsidyPref} onChange={(e) => setSubsidyPref(e.target.value)} className={styles.formSelect}>
-              <option value="全国">🌐 全国</option>
+              <option value="国">🏛️ 国（全都道府県で常に参照）</option>
               {PREFS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
-
             {sourceTab === "text" && (
               <>
                 <label className={styles.label}>詳細情報</label>
                 <textarea value={subsidyDetail} onChange={(e) => setSubsidyDetail(e.target.value)} placeholder="例：中小製造業者向け。設備投資の最大2/3補助、上限1000万円。省エネ・DX対象。従業員20名以下。" className={styles.formTextarea} />
               </>
             )}
-
             {sourceTab === "pdf" && (
               <>
                 <div className={styles.notice}>📌 PDFからテキストを自動抽出して登録します。スキャン画像PDFは抽出できない場合があります。</div>
-                <div
-                  className={styles.dropZone}
-                  onClick={() => document.getElementById("pdfInput")?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processPdf(f); }}
-                >
+                <div className={styles.dropZone} onClick={() => document.getElementById("pdfInput")?.click()} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) processPdf(f); }}>
                   <div className={styles.dropIcon}>📄</div>
                   <p>{pdfText ? "✅ PDFを読み込み済み" : "クリックまたはPDFをドラッグ＆ドロップ"}</p>
                   <input id="pdfInput" type="file" accept=".pdf" style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) processPdf(e.target.files[0]); }} />
@@ -377,7 +431,6 @@ export default function Home() {
                 {pdfStatus && <p className={styles.progressText}>{pdfStatus}</p>}
               </>
             )}
-
             {sourceTab === "url" && (
               <>
                 <div className={styles.notice}>📌 URLのページ内容を取得して登録します。サイトによっては取得できない場合があります。</div>
@@ -386,10 +439,7 @@ export default function Home() {
                 {urlStatus && <p className={styles.progressText}>{urlStatus}</p>}
               </>
             )}
-
-            <button className={styles.btnPrimary} onClick={addSubsidy} disabled={adding}>
-              {adding ? "登録中..." : "＋ 追加する"}
-            </button>
+            <button className={styles.btnPrimary} onClick={addSubsidy} disabled={adding}>{adding ? "登録中..." : "＋ 追加する"}</button>
           </div>
 
           <div className={styles.card}>
@@ -397,11 +447,11 @@ export default function Home() {
             <div className={styles.filterBar}>
               <select value={filterPref} onChange={(e) => setFilterPref(e.target.value)} className={styles.formSelect} style={{ marginBottom: 0, flex: 1 }}>
                 <option value="">すべての地域</option>
+                <option value="国">🏛️ 国</option>
                 {PREFS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
               <span className={styles.filterCount}>{filteredSubsidies.length} 件</span>
             </div>
-
             {loadingSubsidies ? (
               <p className={styles.emptyState}>読み込み中...</p>
             ) : subsidies.length === 0 ? (
@@ -416,7 +466,7 @@ export default function Home() {
                       <span className={`${styles.badge} ${s.sourceType === "pdf" ? styles.badgePdf : s.sourceType === "url" ? styles.badgeUrl : styles.badgeText}`}>
                         {s.sourceType === "pdf" ? "📄 PDF" : s.sourceType === "url" ? "🔗 URL" : "📝 テキスト"}
                       </span>
-                      <span className={`${styles.badge} ${s.pref === "全国" ? styles.badgeNational : styles.badgePref}`}>{s.pref}</span>
+                      <span className={`${styles.badge} ${s.pref === "国" ? styles.badgeNational : styles.badgePref}`}>{s.pref}</span>
                       <h4 className={styles.subsidyName}>{s.name}</h4>
                       <p className={styles.subsidyPreview}>{s.detail.slice(0, 80)}{s.detail.length > 80 ? "..." : ""}</p>
                       {s.url && <p className={styles.subsidyUrl}>🔗 {s.url}</p>}
@@ -430,76 +480,44 @@ export default function Home() {
         </div>
       )}
 
-      {/* ② 設定パネル：管理者パスワードで保護 */}
+      {/* 設定パネル（管理者専用） */}
       {tab === "settings" && (
         <div className={`${styles.panel} ${styles.panelScroll}`}>
           {!adminUnlocked ? (
             <div className={styles.card}>
               <h3 className={styles.cardTitle}>管理者認証</h3>
               <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 14, lineHeight: 1.6 }}>
-                設定画面は管理者専用です。パスワードを入力してください。
+                設定画面は管理者専用です。管理者パスワードを入力してください。
               </p>
               <label className={styles.label}>管理者パスワード</label>
               <input
                 type="password"
                 value={adminPwInput}
                 onChange={(e) => setAdminPwInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    if (adminPwInput === ADMIN_PASSWORD) {
-                      setAdminUnlocked(true);
-                      setAdminPwError("");
-                    } else {
-                      setAdminPwError("パスワードが違います");
-                    }
-                  }
-                }}
-                placeholder="パスワードを入力"
+                onKeyDown={(e) => { if (e.key === "Enter") doAdminAuth(); }}
+                placeholder="管理者パスワード"
                 className={styles.formInput}
               />
               {adminPwError && <p style={{ color: "var(--danger)", fontSize: "0.82rem", marginBottom: 10 }}>{adminPwError}</p>}
-              <button
-                className={styles.btnPrimary}
-                onClick={() => {
-                  if (adminPwInput === ADMIN_PASSWORD) {
-                    setAdminUnlocked(true);
-                    setAdminPwError("");
-                  } else {
-                    setAdminPwError("パスワードが違います");
-                  }
-                }}
-              >
-                認証する
+              <button className={styles.btnPrimary} onClick={doAdminAuth} disabled={adminLoading}>
+                {adminLoading ? "確認中..." : "認証する"}
               </button>
             </div>
           ) : (
             <div className={styles.card}>
-              <h3 className={styles.cardTitle}>Gemini API設定</h3>
-              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
-                APIキーはブラウザのlocalStorageに保存されます。<br />
-                取得先：<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: "#7ab4ff" }}>Google AI Studio</a>
+              <h3 className={styles.cardTitle}>システム情報</h3>
+              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.8 }}>
+                APIキーはVercelの環境変数で管理されています。<br />
+                変更する場合はVercelダッシュボード → Settings → Environment Variables から更新してください。<br /><br />
+                <strong style={{ color: "var(--text)" }}>管理する環境変数：</strong><br />
+                GEMINI_API_KEY — Gemini APIキー<br />
+                APP_PASSWORD — 社員ログインパスワード<br />
+                ADMIN_PASSWORD — 管理者パスワード<br />
+                REDIS_URL — Redis接続URL
               </p>
-              <label className={styles.label}>Google AI APIキー</label>
-              <input
-                type="password"
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-                placeholder="AIzaSy..."
-                className={styles.formInput}
-              />
               <button
-                className={styles.btnPrimary}
-                onClick={() => {
-                  localStorage.setItem("geminiKey", geminiKey);
-                  setKeySaved(true);
-                  setTimeout(() => setKeySaved(false), 2000);
-                }}
-              >
-                {keySaved ? "✅ 保存しました" : "保存する"}
-              </button>
-              <button
-                style={{ marginTop: 12, background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontFamily: "inherit", fontSize: "0.82rem", width: "100%" }}
-                onClick={() => { setAdminUnlocked(false); setAdminPwInput(""); }}
+                style={{ marginTop: 16, background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontFamily: "inherit", fontSize: "0.82rem", width: "100%" }}
+                onClick={() => setAdminUnlocked(false)}
               >
                 🔒 ロックする
               </button>
