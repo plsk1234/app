@@ -32,10 +32,11 @@ const PREFS = [
 ];
 
 const SUGGESTIONS = [
-  "省エネ設備を導入したい",
-  "DX化を進めたい",
-  "設備投資の補助金を探したい",
-  "雇用を増やす予定がある",
+  "👋 こんにちは、自己紹介して",
+  "☀️ 太陽光発電の導入を検討している",
+  "🔋 蓄電池の導入を検討している",
+  "❄️ エアコン・空調設備を更新したい",
+  "💡 LED照明に切り替えたい",
 ];
 
 const MAX_API_HISTORY = 10;
@@ -485,6 +486,9 @@ export default function Home() {
                     <div className={styles.emptyIcon}>✦</div>
                     <h3>補助金についてご相談ください</h3>
                     <p>都道府県を選択して、案件の内容を入力してください。<br />追加の質問も続けてできます。</p>
+                    <p style={{fontSize: "0.76rem", color: "var(--accent2)", marginTop: 4, lineHeight: 1.7}}>
+                      💡 業種・金額・目的など具体的に書くと回答が速くなります
+                    </p>
                     <div className={styles.chips}>
                       {SUGGESTIONS.map((s) => (
                         <button key={s} className={styles.chip} onClick={() => sendMessage(s)}>{s}</button>
@@ -511,8 +515,11 @@ export default function Home() {
                     {sending && (
                       <div className={`${styles.msg} ${styles.msgAi}`}>
                         <div className={styles.avatar}>✦</div>
-                        <div className={styles.bubble}>
-                          <span className={styles.dot} /><span className={styles.dot} /><span className={styles.dot} />
+                        <div className={styles.bubble} style={{display: "flex", flexDirection: "column", gap: 6}}>
+                          <div style={{display: "flex", gap: 4}}>
+                            <span className={styles.dot} /><span className={styles.dot} /><span className={styles.dot} />
+                          </div>
+                          <span style={{fontSize: "0.75rem", color: "var(--text-muted)"}}>少々お待ちください...</span>
                         </div>
                       </div>
                     )}
