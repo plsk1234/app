@@ -423,7 +423,7 @@ export default function Home() {
       <header className={styles.header}>
         <h1 className={styles.logo}>// 補助金マッチャー</h1>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span className={styles.geminiBadge}>✦ Gemini 2.5 Flash</span>
+          <span className={styles.geminiBadge}>✦ Gemini 3.1 Flash Lite</span>
           <button className={styles.btnLogout} onClick={doLogout}>ログアウト</button>
         </div>
       </header>
