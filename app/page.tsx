@@ -40,6 +40,23 @@ const SUGGESTIONS = [
 ];
 
 const MAX_API_HISTORY = 10;
+
+// ===== 個人情報検知 =====
+const SENSITIVE_PATTERNS: { pattern: RegExp; label: string }[] = [
+  { pattern: /[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g, label: "メールアドレス" },
+  { pattern: /0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{4}/g, label: "電話番号" },
+  { pattern: /https?:\/\/[^\s]+/g, label: "URL" },
+  { pattern: /〒?\d{3}[-\s]?\d{4}/g, label: "郵便番号" },
+  { pattern: /(株式会社|有限会社|合同会社|一般社団法人|公益財団法人)/g, label: "法人名" },
+];
+
+function detectSensitiveInfo(text: string): string | null {
+  for (const { pattern, label } of SENSITIVE_PATTERNS) {
+    pattern.lastIndex = 0;
+    if (pattern.test(text)) return label;
+  }
+  return null;
+}
 const MAX_SESSIONS = 30; // 保存する最大セッション数
 const SESSIONS_KEY = "chatSessions";
 
@@ -346,6 +363,13 @@ export default function Home() {
   async function sendMessage(overrideText?: string) {
     const text = (overrideText ?? inputText).trim();
     if (!text) return;
+    // 個人情報チェック（フロント）
+    const detected = detectSensitiveInfo(text);
+    if (detected) {
+      alert(`個人情報・機密情報は入力しないでください\n（検知：${detected}）`);
+      return;
+    }
+
     if (!chatPref) { alert("都道府県を選択してください"); return; }
 
     const newMessages: ChatMessage[] = [...messages, { role: "user", text }];
