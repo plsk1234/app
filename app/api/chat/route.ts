@@ -26,6 +26,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "都道府県が指定されていません" }, { status: 400 });
     }
 
+    // 個人情報マスク（APIサイドの二重チェック）
+    const maskSensitive = (text: string): string =>
+      text
+        .replace(/[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}/g, "[メール]")
+        .replace(/0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{4}/g, "[電話番号]")
+        .replace(/https?:\/\/[^\s]+/g, "[URL]")
+        .replace(/〒?\d{3}[-\s]?\d{4}/g, "[郵便番号]")
+        .replace(/(株式会社|有限会社|合同会社|一般社団法人|公益財団法人)/g, "[法人名]");
+
+    const maskedMessages = messages.map(m => ({ ...m, text: maskSensitive(m.text) }));
+
     const redis = getRedis();
     const raw = await redis.get(KEY);
     const allSubsidies: Subsidy[] = raw ? JSON.parse(raw) : [];
@@ -91,7 +102,7 @@ ${nationalSource}
 【登録補助金情報 - ${pref}の補助金】
 ${prefSource}`;
 
-    const contents = messages.map((m, i) => ({
+    const contents = maskedMessages.map((m, i) => ({
       role: m.role,
       parts: [{ text: i === 0 && m.role === "user" ? `${systemPrompt}\n\n---\n\n${m.text}` : m.text }],
     }));
